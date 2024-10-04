@@ -22,6 +22,7 @@ import (
 	contextmodel "github.com/grafana/grafana/pkg/services/contexthandler/model"
 	"github.com/grafana/grafana/pkg/services/datasources"
 	"github.com/grafana/grafana/pkg/services/featuremgmt"
+	"github.com/grafana/grafana/pkg/services/login"
 	"github.com/grafana/grafana/pkg/services/oauthtoken"
 	pluginac "github.com/grafana/grafana/pkg/services/pluginsintegration/pluginaccesscontrol"
 	"github.com/grafana/grafana/pkg/setting"
@@ -57,7 +58,8 @@ type httpClient interface {
 func NewDataSourceProxy(ds *datasources.DataSource, pluginRoutes []*plugins.Route, ctx *contextmodel.ReqContext,
 	proxyPath string, cfg *setting.Cfg, clientProvider httpclient.Provider,
 	oAuthTokenService oauthtoken.OAuthTokenService, dsService datasources.DataSourceService,
-	tracer tracing.Tracer, features featuremgmt.FeatureToggles) (*DataSourceProxy, error) {
+	tracer tracing.Tracer, features featuremgmt.FeatureToggles,
+) (*DataSourceProxy, error) {
 	targetURL, err := datasource.ValidateURL(ds.Type, ds.URL)
 	if err != nil {
 		return nil, err
@@ -268,6 +270,13 @@ func (proxy *DataSourceProxy) director(req *http.Request) {
 			if ok && idToken != "" {
 				req.Header.Set("X-ID-Token", idToken)
 			}
+		}
+		// Forward JWT Authentication id token
+		if proxy.ctx.SignedInUser != nil && proxy.ctx.SignedInUser.AuthenticatedBy == login.JWTModule {
+			jwtToken := proxy.ctx.Req.Header.Get("Authorization")
+			// Strip the 'Bearer' prefix if it exists.
+			jwtToken = strings.TrimPrefix(jwtToken, "Bearer ")
+			req.Header.Set("X-ID-Token", jwtToken)
 		}
 	}
 
